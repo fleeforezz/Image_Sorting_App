@@ -1,76 +1,16 @@
-# import os
-# import shutil
-# from tqdm import tqdm  # pip install tqdm
-
-# # Ask user for input folder and destination folder
-# source = input("Enter the folder to scan (leave blank for current folder): ").strip()
-# if not source:
-#     source = os.getcwd()
-
-# destination = input("Enter destination folder for copied files: ").strip()
-# if not destination:
-#     destination = os.path.join(os.getcwd(), 'photo')
-
-# # Normalize paths
-# source = os.path.abspath(source)
-# destination = os.path.abspath(destination)
-# os.makedirs(destination, exist_ok=True)
-
-# # Extensions to match
-# extensions = ('.mp4', '.mov', '.heic', '.avi', '.jpg', '.jpeg', '.png')
-
-# # Collect files & sizes
-# files_to_copy = []
-# total_size = 0
-# for root, dirs, files in os.walk(source):
-#     for file in files:
-#         if file.lower().endswith(extensions):
-#             fpath = os.path.join(root, file)
-#             files_to_copy.append(fpath)
-#             total_size += os.path.getsize(fpath)
-
-# # Progress bar in bytes, will show MB copied
-# pbar = tqdm(total=total_size, unit='B', unit_scale=True, unit_divisor=1024,
-#             desc=f"Copying {len(files_to_copy)} files")
-
-# bytes_copied = 0
-
-# for src_path in files_to_copy:
-#     file = os.path.basename(src_path)
-#     dest_path = os.path.join(destination, file)
-
-#     # Handle duplicate names
-#     if os.path.exists(dest_path):
-#         name, ext = os.path.splitext(file)
-#         counter = 1
-#         new_name = f"{name}_{counter}{ext}"
-#         new_dest_path = os.path.join(destination, new_name)
-#         while os.path.exists(new_dest_path):
-#             counter += 1
-#             new_name = f"{name}_{counter}{ext}"
-#             new_dest_path = os.path.join(destination, new_name)
-#         dest_path = new_dest_path
-
-#     # Copy file in chunks so we can update size progress
-#     with open(src_path, 'rb') as fsrc, open(dest_path, 'wb') as fdst:
-#         while True:
-#             chunk = fsrc.read(1024 * 1024)  # 1 MB chunks
-#             if not chunk:
-#                 break
-#             fdst.write(chunk)
-#             bytes_copied += len(chunk)
-#             pbar.update(len(chunk))
-
-# pbar.close()
-# print(f"\nDone! {len(files_to_copy)} files copied to {destination}")
-
-
-import os
+import sys, os
+import shutil
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from tkinter import filedialog, messagebox
 
 extensions = ('.mp4', '.mov', '.heic', '.avi', '.jpg', '.jpeg', '.png')
+
+def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller."""
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath("."), relative_path)
 
 class CopyApp:
     def __init__(self, root):
@@ -112,11 +52,65 @@ class CopyApp:
             self.dest_dir.set(folder)
 
     def start_copy(self):
-        # same copy logic as before
-        messagebox.showinfo("Info", "Start copying here... implement your copy logic")
+        src = self.source_dir.get().strip()
+        dst = self.dest_dir.get().strip()
+
+        if not os.path.isdir(src):
+            messagebox.showerror("Error", "Source folder is invalid.")
+            return
+
+        if not dst:
+            messagebox.showerror("Error", "Please select a destination folder.")
+            return
+
+        if not os.path.exists(dst):
+            os.makedirs(dst, exist_ok=True)
+
+        # find all files to copy
+        files_to_copy = []
+        for root, dirs, files in os.walk(src):
+            for file in files:
+                if file.lower().endswith(extensions):
+                    files_to_copy.append(os.path.join(root, file))
+
+        if not files_to_copy:
+            messagebox.showinfo("Info", "No media files found to copy.")
+            return
+
+        self.progress_var.set(0)
+        self.progress.configure(maximum=len(files_to_copy))
+        self.status_text.set(f"Found {len(files_to_copy)} files. Copying...")
+
+        # copy loop
+        for idx, src_path in enumerate(files_to_copy, 1):
+            file_name = os.path.basename(src_path)
+            dest_path = os.path.join(dst, file_name)
+
+            # avoid overwriting
+            if os.path.exists(dest_path):
+                name, ext = os.path.splitext(file_name)
+                counter = 1
+                new_name = f"{name}_{counter}{ext}"
+                new_dest_path = os.path.join(dst, new_name)
+                while os.path.exists(new_dest_path):
+                    counter += 1
+                    new_name = f"{name}_{counter}{ext}"
+                    new_dest_path = os.path.join(dst, new_name)
+                dest_path = new_dest_path
+
+            shutil.copy2(src_path, dest_path)
+
+            # update progress bar & status
+            self.progress_var.set(idx)
+            self.status_text.set(f"Copying {idx}/{len(files_to_copy)}: {file_name}")
+            self.root.update_idletasks()
+
+        self.status_text.set(f"Done! Copied {len(files_to_copy)} files to {dst}")
+        messagebox.showinfo("Done", f"Copied {len(files_to_copy)} files to:\n{dst}")
 
 if __name__ == "__main__":
-    root = ttk.Window(themename="flatly")  # or "darkly", "superhero"
+    root = ttk.Window(themename="superhero")  # "darkly", "superhero" also nice
+    icon_path = resource_path(os.path.join("assets", "photo.ico"))
+    root.iconbitmap(icon_path)
     app = CopyApp(root)
     root.mainloop()
-
